@@ -1,0 +1,74 @@
+# Predicting Stellar Class (Kaggle)
+
+This repository contains a complete, robust machine learning pipeline for classifying celestial objects (GALAXY, STAR, QSO) based on tabular astronomical data. 
+
+## 🚀 Features
+
+- **Domain-Specific Feature Engineering**: Extracts 12 new features including photometric color indices (e.g., `u-g`, `g-r`), redshift interactions, and band statistics. These represent the physical properties astronomers use for classification.
+- **Robust Preprocessing**: Handles missing values and categorical data using strict `OrdinalEncoder` mapping.
+- **Multiple GBDT Models**: Trains and evaluates LightGBM, XGBoost, CatBoost, Random Forest, and Extra Trees.
+- **Class Imbalance Handling**: Automatically computes and applies balanced class weights to address the severe STAR class imbalance.
+- **Strict Cross-Validation**: Stratified 5-Fold CV ensures unbiased evaluation and prevents data leakage.
+- **OOF Generation for Stacking**: A dedicated `oof_generator.py` script generates clean Out-Of-Fold predictions for the entire dataset to feed into meta-learners (stacking ensembles).
+
+## 📁 Project Structure
+
+```text
+├── src/
+│   ├── preprocess.py       # Data loading, encoding, and domain feature engineering
+│   ├── train.py            # Model training, CV evaluation, and soft-voting ensemble
+│   ├── predict.py          # Generates final submission using trained models
+│   └── oof_generator.py    # Generates unbiased OOF probabilities for stacking
+├── requirements.txt        # Python dependencies
+├── .gitignore              # Ignores large datasets and generated CSVs
+└── README.md               # Project documentation
+```
+
+*(Note: The `Dataset/` folder containing `train.csv` and `test.csv` should be placed in the project root but is excluded from version control due to size.)*
+
+## 🛠️ Setup
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/jpoitras2k/Predicting-Stellar-Class.git
+   cd Predicting-Stellar-Class
+   ```
+
+2. **Create a virtual environment and install dependencies:**
+   ```bash
+   python -m venv .venv
+   
+   # Windows
+   .\.venv\Scripts\activate
+   
+   # Linux/Mac
+   source .venv/bin/activate
+   
+   pip install -r requirements.txt
+   ```
+
+## 📊 Usage
+
+### 1. Training the Models
+Trains all 5 models via Stratified 5-Fold CV, evaluates a soft-voting ensemble, and saves the final models to `models/`.
+```bash
+python src/train.py
+```
+
+### 2. Generating Final Predictions
+Loads the saved models from `train.py`, averages their probabilities, and generates `submission.csv`.
+```bash
+python src/predict.py
+```
+
+### 3. Generating OOF Predictions (For Stacking)
+Generates fold-level predictions (`lgbm_oof_train.csv` and `lgbm_oof_test.csv`) using LightGBM, providing unbiased meta-features for advanced ensemble stacking.
+```bash
+python src/oof_generator.py
+```
+
+## 📈 Baseline Results (LightGBM OOF)
+
+- **Accuracy**: ~96.27%
+- **Log Loss**: ~0.1026
+- **STAR Recall**: 0.98 (boosted significantly by class weighting)
