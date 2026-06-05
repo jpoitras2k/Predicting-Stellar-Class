@@ -1,0 +1,79 @@
+import json
+
+cells = [
+    {
+        'cell_type': 'markdown',
+        'metadata': {},
+        'source': ['# Predicting Stellar Class (Kaggle)\n', 'This notebook contains the complete, highly-optimized ML pipeline for the Kaggle Playground Series s6e6 competition.\n\n', 'Features include:\n', '- **Domain-Specific Feature Engineering** (color indices, redshift interactions)\n', '- **Class Imbalance Handling** (Balanced Class Weights)\n', '- **Optuna-Optimized Models** (LightGBM, XGBoost, CatBoost, RF, ET)\n', '- **Soft-Voting Ensemble** for the final prediction']
+    },
+    {
+        'cell_type': 'code',
+        'metadata': {},
+        'execution_count': None,
+        'outputs': [],
+        'source': ['# 1. IMPORTS & SETUP\n', 'import numpy as np\n', 'import pandas as pd\n', 'from sklearn.preprocessing import OrdinalEncoder\n', 'from sklearn.model_selection import StratifiedKFold\n', 'from sklearn.metrics import log_loss, accuracy_score, classification_report\n', 'from sklearn.utils.class_weight import compute_class_weight\n', 'from lightgbm import LGBMClassifier\n', 'from xgboost import XGBClassifier\n', 'from catboost import CatBoostClassifier\n', 'from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier\n\n', '# Setup paths for Kaggle\n', 'TRAIN_CSV = "/kaggle/input/playground-series-s6e6/train.csv"\n', 'TEST_CSV = "/kaggle/input/playground-series-s6e6/test.csv"\n', 'SUBMISSION_CSV = "submission.csv"\n\n', 'RANDOM_STATE = 42']
+    },
+    {
+        'cell_type': 'markdown',
+        'metadata': {},
+        'source': ['## 2. Feature Engineering & Preprocessing']
+    },
+    {
+        'cell_type': 'code',
+        'metadata': {},
+        'execution_count': None,
+        'outputs': [],
+        'source': ['def load_and_preprocess_data(filepath, is_train=True, encoder=None):\n', '    df = pd.read_csv(filepath)\n', '    \n', '    # Domain-specific feature engineering\n', '    # 1. Color Indices (Photometric)\n', '    df["u-g"] = df["u"] - df["g"]\n', '    df["g-r"] = df["g"] - df["r"]\n', '    df["r-i"] = df["r"] - df["i"]\n', '    df["i-z"] = df["i"] - df["z"]\n', '    \n', '    # 2. Redshift interactions\n', '    df["redshift_g_r"] = df["redshift"] * df["g-r"]\n', '    df["redshift_r_i"] = df["redshift"] * df["r-i"]\n', '    df["redshift_sq"] = df["redshift"] ** 2\n', '    \n', '    # 3. Band statistics\n', '    bands = ["u", "g", "r", "i", "z"]\n', '    df["band_mean"] = df[bands].mean(axis=1)\n', '    df["band_std"] = df[bands].std(axis=1)\n', '    df["band_max"] = df[bands].max(axis=1)\n', '    df["band_min"] = df[bands].min(axis=1)\n', '    df["band_range"] = df["band_max"] - df["band_min"]\n', '    \n', '    if is_train:\n', '        X = df.drop(columns=["id", "class"])\n', '        y = df["class"]\n', '    else:\n', '        X = df.drop(columns=["id"])\n', '        y = None\n', '        \n', '    # Handle categoricals\n', '    cat_cols = X.select_dtypes(include=["object", "category"]).columns.tolist()\n', '    if len(cat_cols) > 0:\n', '        if is_train:\n', '            encoder = OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1)\n', '            X[cat_cols] = encoder.fit_transform(X[cat_cols])\n', '        else:\n', '            X[cat_cols] = encoder.transform(X[cat_cols])\n', '            \n', '    return X, y, encoder']
+    },
+    {
+        'cell_type': 'markdown',
+        'metadata': {},
+        'source': ['## 3. Define Models (with Optuna-Tuned Parameters)']
+    },
+    {
+        'cell_type': 'code',
+        'metadata': {},
+        'execution_count': None,
+        'outputs': [],
+        'source': ['def get_models(class_weights=None):\n', '    return {\n', '        "LightGBM": LGBMClassifier(\n', '            n_estimators=874,\n', '            learning_rate=0.055022422187696825,\n', '            num_leaves=162,\n', '            max_depth=18,\n', '            min_child_samples=39,\n', '            feature_fraction=0.5570863190538407,\n', '            bagging_fraction=0.8585816816694674,\n', '            bagging_freq=2,\n', '            reg_alpha=5.663709646092421e-07,\n', '            reg_lambda=0.14798921503221413,\n', '            class_weight=class_weights,\n', '            random_state=RANDOM_STATE,\n', '            n_jobs=-1,\n', '            verbose=-1\n', '        ),\n', '        "XGBoost": XGBClassifier(\n', '            n_estimators=500,\n', '            learning_rate=0.05,\n', '            max_depth=6,\n', '            subsample=0.8,\n', '            colsample_bytree=0.8,\n', '            random_state=RANDOM_STATE,\n', '            n_jobs=-1\n', '        ),\n', '        "CatBoost": CatBoostClassifier(\n', '            iterations=800,\n', '            learning_rate=0.05,\n', '            depth=6,\n', '            random_state=RANDOM_STATE,\n', '            verbose=False,\n', '            thread_count=-1\n', '        ),\n', '        "Random Forest": RandomForestClassifier(\n', '            n_estimators=300,\n', '            max_depth=15,\n', '            class_weight=class_weights,\n', '            random_state=RANDOM_STATE,\n', '            n_jobs=-1\n', '        ),\n', '        "Extra Trees": ExtraTreesClassifier(\n', '            n_estimators=300,\n', '            max_depth=15,\n', '            class_weight=class_weights,\n', '            random_state=RANDOM_STATE,\n', '            n_jobs=-1\n', '        )\n', '    }']
+    },
+    {
+        'cell_type': 'markdown',
+        'metadata': {},
+        'source': ['## 4. Train Models & Ensemble']
+    },
+    {
+        'cell_type': 'code',
+        'metadata': {},
+        'execution_count': None,
+        'outputs': [],
+        'source': ['print("Loading and preprocessing data...")\n', 'X_train, y_train, encoder = load_and_preprocess_data(TRAIN_CSV, is_train=True)\n', 'X_test, _, _ = load_and_preprocess_data(TEST_CSV, is_train=False, encoder=encoder)\n\n', '# Compute class weights for STAR imbalance\n', 'classes = np.unique(y_train)\n', 'cw_array = compute_class_weight("balanced", classes=classes, y=y_train)\n', 'class_weights = dict(zip(classes, cw_array))\n', 'print(f"Class weights: {class_weights}")\n\n', '# Get Models\n', 'models = get_models(class_weights)\n', 'test_preds = np.zeros((len(X_test), len(classes)))\n\n', 'print("\\nTraining models on full dataset...")\n', 'for name, model in models.items():\n', '    print(f"Training {name}...")\n', '    if name == "XGBoost":\n', '        # XGBoost requires numeric targets\n', '        target_map = {c: i for i, c in enumerate(classes)}\n', '        y_train_num = y_train.map(target_map)\n', '        model.fit(X_train, y_train_num)\n', '        test_preds += model.predict_proba(X_test)\n', '    else:\n', '        if name == "LightGBM":\n', '            sample_weights = np.array([class_weights[c] for c in y_train])\n', '            model.fit(X_train, y_train, sample_weight=sample_weights)\n', '        else:\n', '            model.fit(X_train, y_train)\n', '        test_preds += model.predict_proba(X_test)\n\n', '# Average probabilities\n', 'test_preds /= len(models)\n\n', '# Final predictions\n', 'final_classes = [classes[i] for i in np.argmax(test_preds, axis=1)]\n\n', '# Save Submission\n', 'sample_sub = pd.read_csv("/kaggle/input/playground-series-s6e6/sample_submission.csv")\n', 'submission = pd.DataFrame({\n', '    "id": sample_sub["id"],\n', '    "class": final_classes\n', '})\n', 'submission.to_csv(SUBMISSION_CSV, index=False)\n', 'print("\\n[OK] Successfully saved submission.csv!")']
+    }
+]
+
+notebook = {
+    'cells': cells,
+    'metadata': {
+        'kernelspec': {
+            'display_name': 'Python 3',
+            'language': 'python',
+            'name': 'python3'
+        },
+        'language_info': {
+            'codemirror_mode': {'name': 'ipython', 'version': 3},
+            'file_extension': '.py',
+            'mimetype': 'text/x-python',
+            'name': 'python',
+            'nbconvert_exporter': 'python',
+            'pygments_lexer': 'ipython3',
+            'version': '3.11.0'
+        }
+    },
+    'nbformat': 4,
+    'nbformat_minor': 4
+}
+
+with open('kaggle_notebook.ipynb', 'w', encoding='utf-8') as f:
+    json.dump(notebook, f, indent=2)
+
+print('Successfully generated kaggle_notebook.ipynb')
