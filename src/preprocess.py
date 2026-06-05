@@ -30,6 +30,8 @@ def engineer_features(X):
     X['abs_redshift']    = X['redshift'].abs()   # Handle negative noise values
     X['redshift_x_gr']   = X['redshift'] * X['g_r']   # Interaction with color
     X['redshift_x_ur']   = X['redshift'] * X['u_r']   # UV interaction with redshift
+    X['log1p_redshift']  = np.log1p(X['redshift'].clip(lower=0))  # Log transform
+    X['u_g_x_redshift']  = X['u_g'] * X['redshift']   # UV excess x redshift
     
     # Band magnitude statistics (brightness distribution across bands)
     band_cols = ['u', 'g', 'r', 'i', 'z']
@@ -40,7 +42,65 @@ def engineer_features(X):
     return X
 
 
-def load_and_preprocess_data(file_path, is_train=True, ordinal_encoder=None):
+def apply_target_encoding(X, y=None, target_enc_maps=None, cat_cols=None):
+    """
+    Apply smoothed target encoding for categorical columns.
+    
+    During training (y is not None): computes the mean of numeric target per
+    category with global prior smoothing to prevent overfitting on rare categories.
+    
+    During inference (target_enc_maps provided): applies the stored mappings.
+    
+    Returns the modified X and the encoding maps.
+    """
+    if cat_cols is None:
+        cat_cols = ['spectral_type', 'galaxy_population']
+    
+    smoothing = 10  # regularization strength
+    
+    if y is not None and target_enc_maps is None:
+        # Training: compute target encoding maps
+        target_enc_maps = {}
+        global_mean = y.mean()
+        
+        for col in cat_cols:
+            if col not in X.columns:
+                continue
+            stats = y.groupby(X[col]).agg(['mean', 'count'])
+            # Smoothed encoding: blend category mean with global mean
+            smoother = 1 / (1 + np.exp(-(stats['count'] - smoothing) / smoothing))
+            stats['smoothed'] = smoother * stats['mean'] + (1 - smoother) * global_mean
+            target_enc_maps[col] = stats['smoothed'].to_dict()
+            X[f'{col}_te'] = X[col].map(target_enc_maps[col]).fillna(global_mean)
+        
+        # Interaction: spectral_type x galaxy_population
+        if 'spectral_type' in X.columns and 'galaxy_population' in X.columns:
+            interaction_col = X['spectral_type'].astype(str) + '_' + X['galaxy_population'].astype(str)
+            stats = y.groupby(interaction_col).agg(['mean', 'count'])
+            smoother = 1 / (1 + np.exp(-(stats['count'] - smoothing) / smoothing))
+            stats['smoothed'] = smoother * stats['mean'] + (1 - smoother) * global_mean
+            target_enc_maps['spectral_x_galaxy'] = stats['smoothed'].to_dict()
+            X['spectral_x_galaxy_te'] = interaction_col.map(target_enc_maps['spectral_x_galaxy']).fillna(global_mean)
+    
+    elif target_enc_maps is not None:
+        # Inference: apply stored maps
+        for col in cat_cols:
+            if col not in X.columns or col not in target_enc_maps:
+                continue
+            global_mean = np.mean(list(target_enc_maps[col].values()))
+            X[f'{col}_te'] = X[col].map(target_enc_maps[col]).fillna(global_mean)
+        
+        if 'spectral_x_galaxy' in target_enc_maps:
+            if 'spectral_type' in X.columns and 'galaxy_population' in X.columns:
+                interaction_col = X['spectral_type'].astype(str) + '_' + X['galaxy_population'].astype(str)
+                global_mean = np.mean(list(target_enc_maps['spectral_x_galaxy'].values()))
+                X['spectral_x_galaxy_te'] = interaction_col.map(target_enc_maps['spectral_x_galaxy']).fillna(global_mean)
+    
+    return X, target_enc_maps
+
+
+def load_and_preprocess_data(file_path, is_train=True, ordinal_encoder=None,
+                             target_enc_maps=None):
     """
     Loads and preprocesses the dataset.
     
@@ -48,11 +108,13 @@ def load_and_preprocess_data(file_path, is_train=True, ordinal_encoder=None):
     - file_path: path to the CSV file.
     - is_train: boolean, whether it is training data.
     - ordinal_encoder: fitted OrdinalEncoder instance (required when is_train=False).
+    - target_enc_maps: dict of target encoding maps (required when is_train=False).
     
     Returns:
     - X: DataFrame of features.
     - y: Series of target labels (if is_train=True, else None).
     - encoder: The fitted OrdinalEncoder instance.
+    - target_enc_maps: dict of target encoding maps.
     """
     df = pd.read_csv(file_path)
     
@@ -70,6 +132,12 @@ def load_and_preprocess_data(file_path, is_train=True, ordinal_encoder=None):
     for col in categorical_cols:
         if col in X.columns:
             X[col] = X[col].fillna('Missing')
+    
+    # Target encoding (before ordinal encoding so we can use string categories)
+    if is_train:
+        X, target_enc_maps = apply_target_encoding(X, y=y, cat_cols=categorical_cols)
+    else:
+        X, _ = apply_target_encoding(X, target_enc_maps=target_enc_maps, cat_cols=categorical_cols)
     
     # Ordinal encoding for categorical columns
     if is_train:
@@ -89,4 +157,5 @@ def load_and_preprocess_data(file_path, is_train=True, ordinal_encoder=None):
     # Apply domain-driven feature engineering
     X = engineer_features(X)
     
-    return X, y, ordinal_encoder
+    return X, y, ordinal_encoder, target_enc_maps
+

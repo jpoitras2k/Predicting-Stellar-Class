@@ -47,16 +47,16 @@ N_CLASSES   = 3
 
 # ─── LightGBM hyperparameters (best configuration from train.py) ─────────────
 LGBM_PARAMS = dict(
-    n_estimators    = 800,
-    learning_rate   = 0.02,
-    num_leaves      = 127,
-    max_depth       = -1,
-    min_child_samples = 20,
-    feature_fraction  = 0.8,
-    bagging_fraction  = 0.8,
-    bagging_freq    = 5,
-    reg_alpha       = 0.1,
-    reg_lambda      = 0.1,
+    n_estimators    = 1120,
+    learning_rate   = 0.02226801364108436,
+    num_leaves      = 209,
+    max_depth       = 19,
+    min_child_samples = 95,
+    feature_fraction  = 0.8039644744979193,
+    bagging_fraction  = 0.933300213669863,
+    bagging_freq    = 1,
+    reg_alpha       = 0.38781720497276845,
+    reg_lambda      = 9.831208648047884e-05,
     random_state    = 42,
     n_jobs          = -1,
     verbose         = -1,
@@ -71,12 +71,13 @@ def run(n_folds: int = 5, seed: int = 42) -> None:
 
     # ─── Load & preprocess ────────────────────────────────────────────────────
     print("Loading and preprocessing training data...")
-    X_train, y_train, ordinal_encoder = load_and_preprocess_data(
+    X_train, y_train, ordinal_encoder, target_enc_maps = load_and_preprocess_data(
         TRAIN_CSV, is_train=True
     )
     print("Loading and preprocessing test data...")
-    X_test, _, _ = load_and_preprocess_data(
-        TEST_CSV, is_train=False, ordinal_encoder=ordinal_encoder
+    X_test, _, _, _ = load_and_preprocess_data(
+        TEST_CSV, is_train=False, ordinal_encoder=ordinal_encoder,
+        target_enc_maps=target_enc_maps
     )
 
     # Read IDs for output CSVs

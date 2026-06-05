@@ -7,3 +7,4 @@ catboost
 matplotlib
 seaborn
 ipykernel
+optuna
