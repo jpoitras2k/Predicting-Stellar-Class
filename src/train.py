@@ -47,26 +47,28 @@ def get_models(class_weights):
             verbose=-1,
         ),
         'XGBoost': XGBClassifier(
-            n_estimators=600,
-            learning_rate=0.02,
-            max_depth=8,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            reg_alpha=0.1,
-            reg_lambda=1.0,
+            n_estimators=976,
+            learning_rate=0.036094403636716725,
+            max_depth=7,
+            subsample=0.9740842752372363,
+            colsample_bytree=0.6733633454171526,
+            reg_alpha=1.3383643809902204e-05,
+            reg_lambda=1.6103779948820977e-05,
             random_state=RANDOM_STATE,
             n_jobs=-1,
             eval_metric='mlogloss',
             verbosity=0,
+            tree_method='hist'
         ),
         'CatBoost': CatBoostClassifier(
-            iterations=600,
-            learning_rate=0.05,
+            iterations=959,
+            learning_rate=0.07555744428122346,
             depth=8,
-            l2_leaf_reg=3,
+            l2_leaf_reg=1.4652487308640822,
             auto_class_weights='Balanced',
             random_seed=RANDOM_STATE,
-            verbose=0,
+            verbose=False,
+            thread_count=-1
         ),
         'Random Forest': RandomForestClassifier(
             n_estimators=300,
@@ -174,6 +176,20 @@ def main():
     summary_df = pd.DataFrame(results).T.sort_values('Accuracy', ascending=False)
     print(summary_df.to_string())
     print(f"{'='*60}")
+
+    # ─── Save OOF Train Probabilities for Stacking ──────────────────────────────
+    print("\nSaving OOF train probabilities for stacking...")
+    train_ids = pd.read_csv(train_path, usecols=['id'])['id']
+    oof_train_df = pd.DataFrame({'id': train_ids})
+    
+    for name in model_names:
+        clean_name = name.lower().replace(' ', '_')
+        for i, c_name in enumerate(['galaxy', 'qso', 'star']):
+            oof_train_df[f"{clean_name}_{c_name}"] = oof_probas[name][:, i]
+            
+    oof_train_df['target'] = y.values
+    oof_train_df.to_csv('oof_train.csv', index=False)
+    print("Saved oof_train.csv")
 
     # ─── Retrain all models on full dataset and save ───────────────────────────
     print("\nRetraining all models on the full dataset for final submission...")

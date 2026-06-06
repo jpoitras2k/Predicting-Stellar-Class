@@ -36,6 +36,8 @@ def main():
     print("Generating ensemble predictions...")
     all_probas = []
 
+    oof_test_df = pd.DataFrame({'id': test_ids})
+
     for name in model_names:
         model_path = os.path.join('models', f'{name.lower().replace(" ", "_")}.joblib')
         if not os.path.exists(model_path):
@@ -44,6 +46,15 @@ def main():
         model = joblib.load(model_path)
         proba = model.predict_proba(X_test)
         all_probas.append(proba)
+        
+        # Save into OOF dataframe
+        clean_name = name.lower().replace(" ", "_")
+        for i, c_name in enumerate(['galaxy', 'qso', 'star']):
+            oof_test_df[f"{clean_name}_{c_name}"] = proba[:, i]
+
+    # Save OOF Test Probabilities for Stacking
+    oof_test_df.to_csv('oof_test.csv', index=False)
+    print("Saved oof_test.csv for stacking")
 
     # Average probabilities across all models
     ensemble_proba = np.mean(all_probas, axis=0)
